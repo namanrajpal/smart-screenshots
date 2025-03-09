@@ -1,70 +1,125 @@
-# Getting Started with Create React App
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+## Project Overview
 
-## Available Scripts
+A Chrome extension that captures screenshots, analyzes them with AI, and saves them with semantic names and organized folder structure
+Built with React for the UI and will use a Python backend service to handle image processing with OpenAI's Vision API
 
-In the project directory, you can run:
+#### Main Components Implemented
 
-### `npm start`
+smart-screenshots/
+├── manifest.json - Chrome extension manifest file 
+├── background.js - Handles background tasks and screenshot capturing
+├── content.js - Handles area selection overlay
+├── React components for UI
+    ├── Popup UI - Screenshot buttons and status display
+    ├── Options UI - Settings for API key, folder structure, etc.
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in your browser.
+#### React based Chrome Extension Setup
 
-The page will reload when you make changes.\
-You may also see any lint errors in the console.
+Used create-react-app with react-app-rewired to customize the build process
+Modified build process to create separate entry points for popup and options pages
+Post-build script to create the proper Chrome extension file structure
 
-### `npm test`
+### Key Features
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+#### Screenshot Capture
 
-### `npm run build`
+Capture visible area of the current tab
+Area selection with a visual overlay (similar to macOS/Ubuntu)
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+#### Settings Management
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+provide OpenAI API key 
+Local server URL configuration
+Folder structure template customization
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+## Project Structure
 
-### `npm run eject`
+src/
+├── components/
+│   ├── Popup/
+│   │   ├── CaptureButtons.js
+│   │   ├── StatusDisplay.js
+│   │   └── Popup.js
+│   └── Options/
+│       ├── ApiKeyInput.js
+│       ├── FolderStructureInput.js
+│       ├── ServerUrlInput.js
+│       └── Options.js
+├── contexts/
+│   └── SettingsContext.js
+├── pages/
+│   ├── PopupPage.js
+│   └── OptionsPage.js
+├── utils/
+│   ├── chromeUtils.js
+│   └── screenshotUtils.js
+├── App.js
+├── index.js
+├── options-index.js
+└── index.css
 
-**Note: this is a one-way operation. Once you `eject`, you can't go back!**
 
-If you aren't satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
+## Testing 
 
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you're on your own.
+### During Development (React Development Mode)
 
-You don't have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn't feel obligated to use this feature. However we understand that this tool wouldn't be useful if you couldn't customize it when you are ready for it.
+#### Run the development server:
+```bash
+npm start
+```
 
-## Learn More
+This will start the React development server, typically at http://localhost:3000. While this environment doesn't fully emulate the Chrome extension context, it's useful for rapidly developing and testing your UI components.
+Test React components:
 
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
+You can test the basic functionality of your React components
+The popup and options UI will be visible in the browser
+Note that Chrome extension APIs (like chrome.storage or chrome.tabs) won't work in this environment
 
-To learn React, check out the [React documentation](https://reactjs.org/).
 
-### Code Splitting
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/code-splitting](https://facebook.github.io/create-react-app/docs/code-splitting)
+### Testing the Actual Chrome Extension
 
-### Analyzing the Bundle Size
+#### Build the extension:
+```bash
+npm run build
+```
+This creates the production build in the build directory, structured as a Chrome extension.
+Load the extension in Chrome:
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size](https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size)
+Open Chrome and navigate to chrome://extensions/
+- Enable "Developer mode" using the toggle in the top-right corner
+- Click "Load unpacked"
+- Select your project's build directory
 
-### Making a Progressive Web App
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app](https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app)
+#### Test the extension functionality:
 
-### Advanced Configuration
+- Click on the extension icon in Chrome's toolbar to open the popup
+- Test the "Capture Visible Area" and "Select Area" buttons
+- Access the options page by right-clicking the extension icon and selecting "Options" (or via the link in your popup)
+- Verify that screenshots are being captured correctly
+- Check that your local backend server is receiving the screenshots (when you implement that part)
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/advanced-configuration](https://facebook.github.io/create-react-app/docs/advanced-configuration)
 
-### Deployment
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/deployment](https://facebook.github.io/create-react-app/docs/deployment)
+### Debugging
 
-### `npm run build` fails to minify
+#### View extension logs:
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify](https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify)
+Open Chrome DevTools for the extension by right-clicking the extension popup and selecting "Inspect"
+Watch the console for log messages and errors
+
+#### Inspect the background page:
+
+In chrome://extensions/, find your extension and click "service worker" under "Inspect views"
+This opens DevTools for the background script
+
+#### View content script logs:
+
+Open the DevTools for any page where your content script is active
+Your content script logs will appear in that page's console
+
+#### Reload the extension:
+
+After making changes and rebuilding, click the refresh icon in chrome://extensions/ to reload your extension
