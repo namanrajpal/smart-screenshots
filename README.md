@@ -4,16 +4,6 @@
 A Chrome extension that captures screenshots, analyzes them with AI, and saves them with semantic names and organized folder structure
 Built with React for the UI and will use a Python backend service to handle image processing with OpenAI's Vision API
 
-#### Main Components Implemented
-
-smart-screenshots/
-├── manifest.json - Chrome extension manifest file 
-├── background.js - Handles background tasks and screenshot capturing
-├── content.js - Handles area selection overlay
-├── React components for UI
-    ├── Popup UI - Screenshot buttons and status display
-    ├── Options UI - Settings for API key, folder structure, etc.
-
 #### React based Chrome Extension Setup
 
 Used create-react-app with react-app-rewired to customize the build process
@@ -34,7 +24,7 @@ Local server URL configuration
 Folder structure template customization
 
 ## Project Structure
-
+```
 src/
 ├── components/
 │   ├── Popup/
@@ -58,6 +48,7 @@ src/
 ├── index.js
 ├── options-index.js
 └── index.css
+```
 
 ```mermaid
 flowchart TB
