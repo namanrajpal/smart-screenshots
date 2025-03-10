@@ -2,6 +2,7 @@
 import React, { useState, useContext, useEffect } from 'react';
 import CaptureButtons from './CaptureButtons';
 import StatusDisplay from './StatusDisplay';
+import ScreenshotHistory from './ScreenshotHistory';
 import { SettingsContext } from '../../contexts/SettingsContext';
 import './Popup.css';
 
@@ -9,6 +10,7 @@ const Popup = () => {
   const { settings, loading } = useContext(SettingsContext);
   const [status, setStatus] = useState('');
   const [processing, setProcessing] = useState(false);
+  const [showHistory, setShowHistory] = useState(true);
 
   const handleCaptureVisible = () => {
     if (!settings.apiKey) {
@@ -21,7 +23,7 @@ const Popup = () => {
 
     // Send message to background script to capture screenshot
     chrome.runtime.sendMessage({ action: 'captureScreenshot' });
-    window.close(); // Close the popup
+    window.close();
   };
 
   const handleCaptureArea = () => {
@@ -42,7 +44,7 @@ const Popup = () => {
           action: 'initiateAreaSelection',
           tabId: tabs[0].id
         });
-        //window.close(); // Close the popup
+        window.close();
       } else {
         setStatus('Error: Could not get current tab');
         setProcessing(false);
@@ -54,6 +56,10 @@ const Popup = () => {
     if (chrome.runtime.openOptionsPage) {
       chrome.runtime.openOptionsPage();
     }
+  };
+
+  const toggleHistory = () => {
+    setShowHistory(!showHistory);
   };
 
   // Listen for messages from background script
@@ -90,11 +96,16 @@ const Popup = () => {
 
       <StatusDisplay status={status} isError={status.startsWith('Error') || status.startsWith('Please set')} />
 
-      <div className="settings-link">
+      <div className="popup-footer">
         <button onClick={openOptions} className="link-button">
           Settings
         </button>
+        <button onClick={toggleHistory} className="link-button">
+          {showHistory ? 'Hide History' : 'Show History'}
+        </button>
       </div>
+
+      {showHistory && <ScreenshotHistory />}
     </div>
   );
 };

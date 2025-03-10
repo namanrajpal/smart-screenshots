@@ -15,6 +15,20 @@ chrome.runtime.onInstalled.addListener(() => {
       });
     }
   });
+
+  // Initialize screenshot history
+  chrome.storage.local.get('screenshotHistory', (data) => {
+    if (!data.screenshotHistory) {
+      chrome.storage.local.set({ screenshotHistory: [] });
+    }
+  });
+
+  // Request notification permission
+  if (chrome.notifications) {
+    chrome.notifications.getPermissionLevel((level) => {
+      console.log("Notification permission level:", level);
+    });
+  }
 });
 
 // Create an offscreen document for image processing
@@ -45,13 +59,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     // Don't return true unless using sendResponse
   } else if (message.action === 'initiateAreaSelection') {
     initiateAreaSelection(message.tabId);
-    // Don't return true unless using sendResponse
   } else if (message.action === 'captureSelectedArea') {
     captureSelectedArea(message.area);
-    // Don't return true unless using sendResponse
   } else if (message.action === 'croppedImageReady') {
     sendToLocalServer(message.croppedDataUrl);
-    // Don't return true unless using sendResponse
+  } else if (message.action === 'openScreenshot') {
+    // Open file explorer to show the screenshot
+    openScreenshotLocation(message.downloadId);
   }
 });
 
@@ -60,6 +74,23 @@ function captureVisibleTab() {
   chrome.tabs.captureVisibleTab(null, { format: 'png' }, (dataUrl) => {
     sendToLocalServer(dataUrl);
   });
+}
+
+function openScreenshotLocation(downloadId) {
+  // Use the downloads API to open the file if we have a downloadId
+  if (downloadId && chrome.downloads) {
+    chrome.downloads.show(parseInt(downloadId));
+  } else {
+    // If no download ID or API not available, show a notification
+    showNotification(
+      'Open File Location',
+      'Use the Downloads page to find your screenshot',
+      'FILE_LOCATION'
+    );
+
+    // Open Downloads page
+    chrome.downloads.showDefaultFolder();
+  }
 }
 
 // Function to initiate area selection in the content script
@@ -104,18 +135,38 @@ function sendToLocalServer(dataUrl) {
   // For testing without a server, just save the image directly
   console.log("Image processed successfully. Would normally send to server.");
 
+  // For testing without a server, just save the image directly
+  const screenshotName = 'smart-screenshot-' + new Date().getTime() + '.png';
+  const timestamp = new Date().getTime();
+
   chrome.downloads.download({
     url: dataUrl,
-    filename: 'smart-screenshot-' + new Date().getTime() + '.png',
+    filename: screenshotName,
     saveAs: false
   }, (downloadId) => {
     console.log("Screenshot saved with ID:", downloadId);
+
+    // Add to history with what we know for sure
+    const screenshotInfo = {
+      name: screenshotName,
+      timestamp: timestamp,
+      downloadId: downloadId,
+    };
+
+    console.log("Updating screenshot history:", screenshotInfo);
+
+    // Add to history
+    updateScreenshotHistory(screenshotInfo);
+
+    // Show notification
+    showScreenshotSavedNotification(screenshotName, downloadId);
 
     // Notify the popup about the processed screenshot
     chrome.runtime.sendMessage({
       action: 'screenshotProcessed',
       result: {
-        name: 'Screenshot_' + new Date().toLocaleString()
+        name: screenshotName,
+        downloadId: downloadId
       }
     });
   });
@@ -155,4 +206,92 @@ function sendToLocalServer(dataUrl) {
     });
   });
   */
+}
+
+function updateScreenshotHistory(screenshotInfo) {
+  chrome.storage.local.get('screenshotHistory', (data) => {
+    let history = data.screenshotHistory || [];
+
+    // Add new screenshot to the beginning of the array
+    history.unshift(screenshotInfo);
+
+    // Limit history to most recent 20 items
+    if (history.length > 20) {
+      history = history.slice(0, 20);
+    }
+
+    // Save updated history
+    chrome.storage.local.set({ screenshotHistory: history }, () => {
+      // Notify popup that history has been updated
+      chrome.runtime.sendMessage({ action: 'historyUpdated' });
+    });
+  });
+}
+
+// Function to show notification when screenshot is saved
+function showScreenshotSavedNotification(name, path) {
+  showNotification(
+    'Screenshot Saved',
+    'Your screenshot has been saved as: ' + name,
+    'SCREENSHOT_SAVED',
+    path
+  );
+}
+
+// Generic notification function
+function showNotification(title, message, type, contextData) {
+  if (!chrome.notifications) {
+    console.log("Notifications not available");
+    return;
+  }
+
+  const notificationId = type + '_' + new Date().getTime();
+
+  chrome.notifications.create(notificationId, {
+    type: 'basic',
+    iconUrl: 'icon128.png',
+    title: title,
+    message: message,
+    buttons: [{ title: 'Open Location' }],
+    requireInteraction: false,
+    priority: 1
+  });
+
+  // Store context data for button clicks
+  if (contextData) {
+    chrome.storage.local.set({ [notificationId]: contextData });
+  }
+}
+
+if (chrome.notifications) {
+  // Handle clicking on the notification
+  chrome.notifications.onClicked.addListener((notificationId) => {
+    handleNotificationClick(notificationId);
+  });
+
+  // Handle clicking the action button
+  chrome.notifications.onButtonClicked.addListener((notificationId, buttonIndex) => {
+    if (buttonIndex === 0) { // "Open Location" button
+      handleNotificationClick(notificationId);
+    }
+  });
+}
+
+// Handle notification click events
+function handleNotificationClick(notificationId) {
+  // Get the stored context data
+  chrome.storage.local.get(notificationId, (data) => {
+    const contextData = data[notificationId];
+    if (!contextData) return;
+
+    if (notificationId.startsWith('SCREENSHOT_SAVED_')) {
+      // For screenshot saved notifications, open file in explorer
+      chrome.downloads.show(parseInt(contextData));
+    } else if (notificationId.startsWith('FILE_LOCATION_')) {
+      // For file location notifications, show in folder
+      chrome.downloads.showDefaultFolder();
+    }
+    chrome.storage.local.remove(notificationId);
+    chrome.notifications.clear(notificationId);
+  });
 }
