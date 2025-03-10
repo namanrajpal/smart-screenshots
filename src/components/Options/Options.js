@@ -2,7 +2,7 @@
 import React, { useContext, useState } from 'react';
 import { SettingsContext } from '../../contexts/SettingsContext';
 import ApiKeyInput from './ApiKeyInput';
-import ServerUrlInput from './ServerUrlInput';
+// import ServerUrlInput from './ServerUrlInput';
 import FolderStructureInput from './FolderStructureInput';
 import './Options.css';
 
@@ -25,9 +25,9 @@ const Options = () => {
   const handleReset = () => {
     const defaultSettings = {
       apiKey: '',
-      serverUrl: 'http://localhost:5000',
       folderStructure: 'Screenshots/[Type]/[Month]/[Name]',
-      saveLocation: 'Downloads'
+      saveLocation: 'Downloads',
+      aiEnabled: true
     };
     setLocalSettings(defaultSettings);
     saveSettings(defaultSettings);
@@ -45,7 +45,7 @@ const Options = () => {
       
       <ApiKeyInput value={localSettings.apiKey} onChange={handleChange} />
       
-      <ServerUrlInput value={localSettings.serverUrl} onChange={handleChange} />
+      {/* <ServerUrlInput value={localSettings.serverUrl} onChange={handleChange} /> */}
       
       <FolderStructureInput value={localSettings.folderStructure} onChange={handleChange} />
       

@@ -71,6 +71,8 @@ const Popup = () => {
       } else if (message.action === 'screenshotError') {
         setStatus(`Error: ${message.error}`);
         setProcessing(false);
+      } else if (message.action === 'processingStatus') {
+        setStatus(message.status);
       }
     };
 

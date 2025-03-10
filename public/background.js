@@ -1,4 +1,3 @@
-// background.js
 chrome.runtime.onInstalled.addListener(() => {
   console.log("Smart Screenshots extension installed!");
 
@@ -8,11 +7,19 @@ chrome.runtime.onInstalled.addListener(() => {
       chrome.storage.sync.set({
         settings: {
           apiKey: '',
-          serverUrl: 'http://localhost:5000',
           folderStructure: 'Screenshots/[Type]/[Month]/[Name]',
-          saveLocation: 'Downloads'
+          saveLocation: 'Downloads',
+          compressionLevel: 'medium', // Setting for image compression
+          aiEnabled: true            // Toggle AI features
         }
       });
+    }
+  });
+
+  // Initialize screenshots metadata storage
+  chrome.storage.local.get('screenshotMetadata', (data) => {
+    if (!data.screenshotMetadata) {
+      chrome.storage.local.set({ screenshotMetadata: [] });
     }
   });
 
@@ -33,9 +40,7 @@ chrome.runtime.onInstalled.addListener(() => {
 
 // Create an offscreen document for image processing
 async function createOffscreenDocumentIfNeeded() {
-  // Simplified version that doesn't use getContexts()
   try {
-    // Try to create the offscreen document
     await chrome.offscreen.createDocument({
       url: 'offscreen.html',
       reasons: ['DOM_PARSER'],
@@ -43,7 +48,6 @@ async function createOffscreenDocumentIfNeeded() {
     });
     console.log("Offscreen document created for image processing");
   } catch (error) {
-    // If error contains "context already exists", we can proceed
     if (error.message && error.message.includes("already exists")) {
       console.log("Offscreen document already exists, reusing it");
       return;
@@ -56,29 +60,22 @@ async function createOffscreenDocumentIfNeeded() {
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.action === 'captureScreenshot') {
     captureVisibleTab();
-    // Don't return true unless using sendResponse
   } else if (message.action === 'initiateAreaSelection') {
     initiateAreaSelection(message.tabId);
   } else if (message.action === 'croppedImageReady') {
-    sendToLocalServer(message.croppedDataUrl);
+    processScreenshot(message.croppedDataUrl);
   } else if (message.action === 'openScreenshot') {
-    // Open file explorer to show the screenshot
     openScreenshotLocation(message.downloadId);
   } else if (message.action === 'prepareForCapture') {
-    // Store the area information temporarily
     console.log("Preparing for capture with area:", message.area);
     chrome.storage.local.set({ 'pendingCaptureArea': message.area });
     return false;
   } else if (message.action === 'captureSelectedArea') {
-    // Get the stored area information
     chrome.storage.local.get('pendingCaptureArea', (data) => {
-      // Use the stored area if available, otherwise use the one from the message
       const area = data.pendingCaptureArea || message.area;
       captureSelectedArea(area);
-      // Clean up the stored area
       chrome.storage.local.remove('pendingCaptureArea');
     });
-    //TODO(namanrajpal) : this will change to true in future when we start handling async calls
     return false;
   }
 });
@@ -86,60 +83,51 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 // Function to capture the visible tab
 function captureVisibleTab() {
   chrome.tabs.captureVisibleTab(null, { format: 'png' }, (dataUrl) => {
-    sendToLocalServer(dataUrl);
+    processScreenshot(dataUrl);
   });
 }
 
 function openScreenshotLocation(downloadId) {
-  // Use the downloads API to open the file if we have a downloadId
   if (downloadId && chrome.downloads) {
     chrome.downloads.show(parseInt(downloadId));
   } else {
-    // If no download ID or API not available, show a notification
     showNotification(
       'Open File Location',
       'Use the Downloads page to find your screenshot',
       'FILE_LOCATION'
     );
-
-    // Open Downloads page
     chrome.downloads.showDefaultFolder();
   }
 }
 
 // Function to initiate area selection in the content script
 function initiateAreaSelection(tabId) {
-  // Inject the content script first to ensure it's available
   chrome.scripting.executeScript(
     {
       target: { tabId: tabId },
       files: ['content.js']
     },
     () => {
-      // After ensuring the content script is loaded, send the message
       setTimeout(() => {
         chrome.tabs.sendMessage(tabId, { action: 'initAreaSelection' });
-      }, 100); // Small delay to ensure script is fully loaded
+      }, 100);
     }
   );
 }
 
 async function captureSelectedArea(area) {
   try {
-    // Create the offscreen document for image processing
     await createOffscreenDocumentIfNeeded();
 
-    // Wait a moment to ensure any DOM changes are fully applied
     setTimeout(() => {
-      // Now capture the screen
       chrome.tabs.captureVisibleTab(null, { format: 'png' }, async (dataUrl) => {
         if (chrome.runtime.lastError) {
           console.error("Error capturing tab:", chrome.runtime.lastError);
+          notifyError(chrome.runtime.lastError);
           return;
         }
 
         try {
-          // Send the data to the offscreen document for processing
           chrome.runtime.sendMessage({
             target: 'offscreen',
             action: 'cropImage',
@@ -148,22 +136,265 @@ async function captureSelectedArea(area) {
           });
         } catch (error) {
           console.error("Error sending to offscreen document:", error);
+          notifyError(error.message);
         }
       });
-    }, 50); // Additional small delay to ensure clean capture
+    }, 50);
   } catch (error) {
     console.error("Error in captureSelectedArea:", error);
+    notifyError(error.message);
   }
 }
 
-// Function to send the screenshot to the local server
-function sendToLocalServer(dataUrl) {
-  // For testing without a server, just save the image directly
-  console.log("Image processed successfully. Would normally send to server.");
+// Process screenshot - main function that handles AI analysis and saving
+async function processScreenshot(dataUrl) {
+  try {
+    chrome.runtime.sendMessage({
+      action: 'processingStatus',
+      status: 'Processing screenshot...'
+    });
 
-  // For testing without a server, just save the image directly
-  const screenshotName = 'smart-screenshot-' + new Date().getTime() + '.png';
-  const timestamp = new Date().getTime();
+    // Get settings
+    const data = await new Promise(resolve =>
+      chrome.storage.sync.get('settings', resolve)
+    );
+    const settings = data.settings || {};
+
+    // Check if AI is enabled and API key exists
+    if (settings.aiEnabled && settings.apiKey) {
+      // Notify processing status
+      chrome.runtime.sendMessage({
+        action: 'processingStatus',
+        status: 'Analyzing with AI...'
+      });
+
+      try {
+        // Compress image if needed
+        const processedDataUrl = compressImageIfNeeded(dataUrl, settings.compressionLevel);
+
+        // Analyze the screenshot with OpenAI Vision
+        const analysis = await analyzeScreenshotWithAI(processedDataUrl, settings.apiKey);
+
+        // Save with AI analysis results
+        saveScreenshotWithMetadata(dataUrl, analysis, settings.folderStructure);
+      } catch (error) {
+        console.error("AI analysis error:", error);
+        chrome.runtime.sendMessage({
+          action: 'processingStatus',
+          status: `AI Analysis Failed with error ${error.message}`
+        });
+        // Fall back to basic save if AI fails
+        saveBasicScreenshot(dataUrl);
+      }
+    } else {
+      // Basic save without AI
+      saveBasicScreenshot(dataUrl);
+    }
+  } catch (error) {
+    console.error("Error processing screenshot:", error);
+    notifyError(error.message);
+  }
+}
+
+// Analyze screenshot with OpenAI Vision API
+// Analyze screenshot with OpenAI Vision API
+async function analyzeScreenshotWithAI(imageDataUrl, apiKey) {
+  try {
+    // Validate and extract base64 data
+    if (typeof imageDataUrl !== 'string') {
+      console.error("Invalid dataUrl type:", typeof imageDataUrl);
+      throw new Error("Image data is not a valid string");
+    }
+
+    if (!imageDataUrl.includes(',')) {
+      console.error("DataUrl doesn't contain expected format");
+      console.log("DataUrl prefix:", imageDataUrl.substring(0, 50));
+      throw new Error("Invalid image data format");
+    }
+
+    const base64Image = imageDataUrl.split(',')[1];
+
+    console.log("Sending image to OpenAI Vision API...");
+
+    // Call OpenAI API with current format
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`
+      },
+      body: JSON.stringify({
+        model: "gpt-4o-mini", // Use a current model with vision capabilities
+        messages: [
+          {
+            role: "user",
+            content: [
+              {
+                type: "text",
+                text: "Analyze this screenshot and provide the following information in JSON format: 1) title - a concise, descriptive name for this image (no quotes needed), 2) category - the type of content (e.g., receipt, document, web page, social media, code, chart, etc.)"
+              },
+              {
+                type: "image_url",
+                image_url: {
+                  url: `data:image/png;base64,${base64Image}`,
+                  detail: "low" // Use low detail to reduce token usage
+                }
+              }
+            ]
+          }
+        ],
+        max_tokens: 300,
+        response_format: { type: "json_object" }
+      })
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      console.error("OpenAI API error:", response.status, response.statusText, errorData);
+      throw new Error(`OpenAI API error: ${response.status} ${response.statusText}`);
+    }
+
+    // Parse the response
+    const responseData = await response.json();
+    console.log("OpenAI response received:", responseData);
+
+    // Added more robust error handling
+    if (!responseData.choices || !responseData.choices[0] || !responseData.choices[0].message) {
+      console.error("Unexpected API response format:", responseData);
+      throw new Error("Invalid API response format");
+    }
+
+    const responseContent = responseData.choices[0].message.content;
+    let analysisData;
+
+    try {
+      analysisData = JSON.parse(responseContent);
+    } catch (error) {
+      console.error("Failed to parse JSON response:", responseContent);
+      throw new Error("Invalid JSON response from API");
+    }
+
+    console.log("Parsed analysis data:", analysisData);
+
+    return {
+      title: analysisData.title || "Screenshot",
+      category: analysisData.category || "Other",
+      date: new Date(),
+      aiGenerated: true
+    };
+  } catch (error) {
+    console.error("Error analyzing with AI:", error);
+    throw error;
+  }
+}
+// Compress image based on compression level setting
+function compressImageIfNeeded(dataUrl, compressionLevel) {
+  //TODO(namanrajpal)
+  return dataUrl;
+}
+
+// Save screenshot with AI-generated metadata and folder structure
+async function saveScreenshotWithMetadata(dataUrl, analysis, folderTemplate) {
+  try {
+    // Format date components
+    const date = analysis.date;
+    const month = date.toLocaleString('default', { month: 'long' });
+    const year = date.getFullYear().toString();
+
+    // Create folder path from template
+    let folderPath = folderTemplate
+      .replace('[Type]', analysis.category)
+      .replace('[Month]', month)
+      .replace('[Year]', year);
+
+    // Sanitize the title for use in filenames
+    const sanitizedTitle = analysis.title.replace(/[\\/:*?"<>|]/g, '_');
+
+    // Create the complete filename path
+    // TODO(namanrajpal) : Folders have to exist already
+    // const filename = `${folderPath}/${sanitizedTitle}.png`;
+    const filename = `${sanitizedTitle}.png`;
+    const timestamp = Date.now();
+
+    // Save the file
+    chrome.downloads.download({
+      url: dataUrl,
+      filename: filename,
+      saveAs: false
+    }, async (downloadId) => {
+      if (chrome.runtime.lastError) {
+        console.error("Download error:", chrome.runtime.lastError);
+        notifyError("Failed to save screenshot");
+        return;
+      }
+
+      // Create metadata object
+      const metadata = {
+        id: timestamp,
+        downloadId: downloadId,
+        filename: filename,
+        title: analysis.title,
+        category: analysis.category,
+        date: date.toISOString(),
+        virtualPath: folderPath,
+        aiGenerated: analysis.aiGenerated || false
+      };
+
+      // Store in both metadata and history
+      await storeScreenshotMetadata(metadata);
+
+      updateScreenshotHistory({
+        name: sanitizedTitle,
+        timestamp: timestamp,
+        downloadId: downloadId,
+        category: analysis.category,
+        virtualPath: folderPath
+      });
+
+      // Show notification
+      showScreenshotSavedNotification(sanitizedTitle, downloadId);
+
+      // Notify success
+      chrome.runtime.sendMessage({
+        action: 'screenshotProcessed',
+        result: {
+          name: analysis.title,
+          category: analysis.category,
+          path: filename,
+          downloadId: downloadId
+        }
+      });
+    });
+  } catch (error) {
+    console.error("Error saving screenshot:", error);
+    // Fall back to basic save
+    saveBasicScreenshot(dataUrl);
+  }
+}
+
+// Store metadata for organization
+async function storeScreenshotMetadata(metadata) {
+  const data = await new Promise(resolve =>
+    chrome.storage.local.get('screenshotMetadata', resolve)
+  );
+  const metadataArray = data.screenshotMetadata || [];
+
+  // Add new metadata to beginning
+  metadataArray.unshift(metadata);
+
+  // Limit to 500 entries
+  if (metadataArray.length > 500) {
+    metadataArray.splice(500);
+  }
+
+  await chrome.storage.local.set({ 'screenshotMetadata': metadataArray });
+}
+
+// Basic screenshot save without AI
+function saveBasicScreenshot(dataUrl) {
+  console.log("Saving basic screenshot");
+  const timestamp = new Date();
+  const screenshotName = 'smart-screenshot-' + timestamp.getTime() + '.png';
 
   chrome.downloads.download({
     url: dataUrl,
@@ -175,11 +406,9 @@ function sendToLocalServer(dataUrl) {
     // Add to history with what we know for sure
     const screenshotInfo = {
       name: screenshotName,
-      timestamp: timestamp,
+      timestamp: timestamp.getTime(),
       downloadId: downloadId,
     };
-
-    console.log("Updating screenshot history:", screenshotInfo);
 
     // Add to history
     updateScreenshotHistory(screenshotInfo);
@@ -196,42 +425,13 @@ function sendToLocalServer(dataUrl) {
       }
     });
   });
+}
 
-  /*
-  // Original server code - uncomment when you have a server running
-  chrome.storage.sync.get('settings', (data) => {
-    const settings = data.settings || {};
-    const serverUrl = settings.serverUrl || 'http://localhost:5000';
-    
-    fetch(`${serverUrl}/process-screenshot`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        image: dataUrl,
-        apiKey: settings.apiKey,
-        folderStructure: settings.folderStructure
-      })
-    })
-    .then(response => response.json())
-    .then(data => {
-      console.log('Screenshot processed:', data);
-      // Notify the popup about the processed screenshot
-      chrome.runtime.sendMessage({
-        action: 'screenshotProcessed',
-        result: data
-      });
-    })
-    .catch(error => {
-      console.error('Error processing screenshot:', error);
-      chrome.runtime.sendMessage({
-        action: 'screenshotError',
-        error: error.message
-      });
-    });
+function notifyError(message) {
+  chrome.runtime.sendMessage({
+    action: 'screenshotError',
+    error: message
   });
-  */
 }
 
 function updateScreenshotHistory(screenshotInfo) {
@@ -255,12 +455,12 @@ function updateScreenshotHistory(screenshotInfo) {
 }
 
 // Function to show notification when screenshot is saved
-function showScreenshotSavedNotification(name, path) {
+function showScreenshotSavedNotification(name, downloadId) {
   showNotification(
     'Screenshot Saved',
     'Your screenshot has been saved as: ' + name,
     'SCREENSHOT_SAVED',
-    path
+    downloadId
   );
 }
 

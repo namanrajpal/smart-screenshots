@@ -6,9 +6,9 @@ export const SettingsContext = createContext();
 export const SettingsProvider = ({ children }) => {
   const [settings, setSettings] = useState({
     apiKey: '',
-    serverUrl: 'http://localhost:5000',
     folderStructure: 'Screenshots/[Type]/[Month]/[Name]',
-    saveLocation: 'Downloads'
+    saveLocation: 'Downloads',
+    aiEnabled: true
   });
   const [loading, setLoading] = useState(true);
 
