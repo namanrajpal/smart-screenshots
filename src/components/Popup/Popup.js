@@ -1,5 +1,5 @@
 // src/components/Popup/Popup.js
-import React, { useState, useContext } from 'react';
+import React, { useState, useContext, useEffect } from 'react';
 import CaptureButtons from './CaptureButtons';
 import StatusDisplay from './StatusDisplay';
 import { SettingsContext } from '../../contexts/SettingsContext';
@@ -10,17 +10,44 @@ const Popup = () => {
   const [status, setStatus] = useState('');
   const [processing, setProcessing] = useState(false);
 
-  const handleCapture = () => {
+  const handleCaptureVisible = () => {
     if (!settings.apiKey) {
       setStatus('Please set your OpenAI API key in Settings');
       return;
     }
 
-    setStatus('Capturing...');
+    setStatus('Capturing visible area...');
     setProcessing(true);
 
     // Send message to background script to capture screenshot
     chrome.runtime.sendMessage({ action: 'captureScreenshot' });
+    window.close(); // Close the popup
+  };
+
+  const handleCaptureArea = () => {
+    if (!settings.apiKey) {
+      setStatus('Please set your OpenAI API key in Settings');
+      return;
+    }
+
+    setStatus('Select an area to capture...');
+    setProcessing(true);
+
+    // Get the current active tab
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      if (tabs.length > 0) {
+        console.log("Initiating area selection for tab:", tabs[0].id);
+        // Send message to background script to initiate area selection
+        chrome.runtime.sendMessage({
+          action: 'initiateAreaSelection',
+          tabId: tabs[0].id
+        });
+        //window.close(); // Close the popup
+      } else {
+        setStatus('Error: Could not get current tab');
+        setProcessing(false);
+      }
+    });
   };
 
   const openOptions = () => {
@@ -30,10 +57,10 @@ const Popup = () => {
   };
 
   // Listen for messages from background script
-  React.useEffect(() => {
+  useEffect(() => {
     const messageListener = (message) => {
       if (message.action === 'screenshotProcessed') {
-        setStatus(`Screenshot saved: ${message.result.filename}`);
+        setStatus(`Screenshot saved: ${message.result.name}`);
         setProcessing(false);
       } else if (message.action === 'screenshotError') {
         setStatus(`Error: ${message.error}`);
@@ -56,8 +83,8 @@ const Popup = () => {
       <h1>Smart Screenshots</h1>
 
       <CaptureButtons
-        onCaptureVisible={handleCapture}
-        onCaptureArea={() => setStatus('Area selection coming soon!')}
+        onCaptureVisible={handleCaptureVisible}
+        onCaptureArea={handleCaptureArea}
         disabled={processing}
       />
 

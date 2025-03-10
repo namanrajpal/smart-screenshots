@@ -21,4 +21,15 @@ fs.copyFileSync(
     path.join(__dirname, '../build/content.js')
 );
 
+// Copy offscreen.html and offscreen.js to build folder
+fs.copyFileSync(
+    path.join(__dirname, '../public/offscreen.html'),
+    path.join(__dirname, '../build/offscreen.html')
+);
+
+fs.copyFileSync(
+    path.join(__dirname, '../public/offscreen.js'),
+    path.join(__dirname, '../build/offscreen.js')
+);
+
 console.log('Post-build processing completed.');

@@ -59,6 +59,122 @@ src/
 ├── options-index.js
 └── index.css
 
+```mermaid
+flowchart TB
+    subgraph "Chrome Extension"
+        subgraph "Frontend"
+            popup[React Popup UI]
+            options[Options Page]
+        end
+
+        subgraph "Background"
+            bg[Background Script\nManages core functionality]
+        end
+
+        subgraph "Content"
+            cs[Content Script\nHandles area selection]
+        end
+
+        subgraph "Processing"
+            off[Offscreen Document - Does image processing]
+        end
+    end
+
+    subgraph "User Interface"
+        browser[Chrome Browser]
+        storage[Chrome Storage\nSettings & Data]
+    end
+
+    subgraph "Backend Service"
+        server[Python Server - AI Image Analysis]
+        disk[File System - Saves organized screenshots]
+    end
+
+    popup --> |1 User initiates capture| bg
+    bg -->|2 Inject & activate| cs
+    cs -->|3 Selection coordinates| bg
+    bg -->|4 Capture screenshot| browser
+    browser -->|5 Sends image data| bg
+    bg -->|6 Image for processing| off
+    off -->|7 Cropped image| bg
+    bg -->|8 Send to server| server
+    server -->|9 Process with AI| server
+    server -->|10 Save organized file| disk
+    server -->|11 Return metadata| bg
+    bg -->|12 Notify completion| popup
+    options -->|Configure settings| storage
+    bg -->|Read settings| storage
+
+    classDef react fill:#61dafb,color:black,stroke:#61dafb
+    classDef chrome fill:#4285F4,color:white
+    classDef python fill:#306998,color:white
+    classDef content fill:#0F9D58,color:white
+    classDef offscreen fill:#F4B400,color:black
+    
+    class popup,options react
+    class bg,browser,storage chrome
+    class server,disk python
+    class cs content
+    class off offscreen
+```
+
+```mermaid
+sequenceDiagram
+    participant Popup as Popup Component (React)
+    participant Background as background.js
+    participant Content as content.js
+    participant Offscreen as offscreen.js
+    
+    Note over Popup,Offscreen: Capture Area Flow
+    
+    Popup->>Background: chrome.runtime.sendMessage({action: 'initiateAreaSelection', tabId: tabs[0].id})
+    Note right of Popup: User clicks "Capture Area" button
+    
+    Background->>Background: initiateAreaSelection(tabId)
+    
+    Background->>Content: chrome.scripting.executeScript({files: ['content.js']})
+    Note right of Background: Ensures content script is loaded
+    
+    Background->>Content: chrome.tabs.sendMessage({action: 'initAreaSelection'})
+    Note right of Background: Tells content script to show selection UI
+    
+    Content->>Content: initializeAreaSelection()
+    Note right of Content: Creates overlay for area selection
+    
+    Note over Content: User draws selection rectangle
+    
+    Content->>Background: chrome.runtime.sendMessage({action: 'captureSelectedArea', area: {...}})
+    Note right of Content: After user completes selection
+    
+    Background->>Background: captureSelectedArea(area)
+    
+    Background->>Background: chrome.tabs.captureVisibleTab()
+    Note right of Background: Captures full screenshot
+    
+    Background->>Background: createOffscreenDocumentIfNeeded()
+    Note right of Background: Creates offscreen document if it doesn't exist
+    
+    Background->>Offscreen: chrome.runtime.sendMessage({target: 'offscreen', action: 'cropImage', dataUrl, area})
+    Note right of Background: Sends screenshot and area to crop
+    
+    Offscreen->>Offscreen: cropImage(dataUrl, area)
+    Note right of Offscreen: Processes image using canvas API
+    
+    Offscreen->>Background: chrome.runtime.sendMessage({action: 'croppedImageReady', croppedDataUrl})
+    Note right of Offscreen: Returns cropped image
+    
+    Background->>Background: sendToLocalServer(croppedDataUrl)
+    Note right of Background: Processes the cropped image
+    
+    Background->>Popup: chrome.runtime.sendMessage({action: 'screenshotProcessed', result})
+    Note right of Background: Notifies popup of completion
+    
+    Note over Popup,Offscreen: Error Handling
+    
+    Background->>Popup: chrome.runtime.sendMessage({action: 'screenshotError', error})
+    Note right of Background: If any error occurs during processing
+```
+
 
 ## Testing 
 
