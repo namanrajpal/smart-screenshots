@@ -59,13 +59,27 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     // Don't return true unless using sendResponse
   } else if (message.action === 'initiateAreaSelection') {
     initiateAreaSelection(message.tabId);
-  } else if (message.action === 'captureSelectedArea') {
-    captureSelectedArea(message.area);
   } else if (message.action === 'croppedImageReady') {
     sendToLocalServer(message.croppedDataUrl);
   } else if (message.action === 'openScreenshot') {
     // Open file explorer to show the screenshot
     openScreenshotLocation(message.downloadId);
+  } else if (message.action === 'prepareForCapture') {
+    // Store the area information temporarily
+    console.log("Preparing for capture with area:", message.area);
+    chrome.storage.local.set({ 'pendingCaptureArea': message.area });
+    return false;
+  } else if (message.action === 'captureSelectedArea') {
+    // Get the stored area information
+    chrome.storage.local.get('pendingCaptureArea', (data) => {
+      // Use the stored area if available, otherwise use the one from the message
+      const area = data.pendingCaptureArea || message.area;
+      captureSelectedArea(area);
+      // Clean up the stored area
+      chrome.storage.local.remove('pendingCaptureArea');
+    });
+    //TODO(namanrajpal) : this will change to true in future when we start handling async calls
+    return false;
   }
 });
 
@@ -110,24 +124,36 @@ function initiateAreaSelection(tabId) {
   );
 }
 
-// Function to capture a selected area
 async function captureSelectedArea(area) {
-  chrome.tabs.captureVisibleTab(null, { format: 'png' }, async (dataUrl) => {
-    try {
-      // Create the offscreen document for image processing
-      await createOffscreenDocumentIfNeeded();
+  try {
+    // Create the offscreen document for image processing
+    await createOffscreenDocumentIfNeeded();
 
-      // Send the data to the offscreen document for processing
-      chrome.runtime.sendMessage({
-        target: 'offscreen',
-        action: 'cropImage',
-        dataUrl: dataUrl,
-        area: area
+    // Wait a moment to ensure any DOM changes are fully applied
+    setTimeout(() => {
+      // Now capture the screen
+      chrome.tabs.captureVisibleTab(null, { format: 'png' }, async (dataUrl) => {
+        if (chrome.runtime.lastError) {
+          console.error("Error capturing tab:", chrome.runtime.lastError);
+          return;
+        }
+
+        try {
+          // Send the data to the offscreen document for processing
+          chrome.runtime.sendMessage({
+            target: 'offscreen',
+            action: 'cropImage',
+            dataUrl: dataUrl,
+            area: area
+          });
+        } catch (error) {
+          console.error("Error sending to offscreen document:", error);
+        }
       });
-    } catch (error) {
-      console.error("Error processing screenshot:", error);
-    }
-  });
+    }, 50); // Additional small delay to ensure clean capture
+  } catch (error) {
+    console.error("Error in captureSelectedArea:", error);
+  }
 }
 
 // Function to send the screenshot to the local server

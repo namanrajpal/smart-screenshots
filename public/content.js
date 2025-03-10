@@ -118,29 +118,39 @@ function handleMouseUp(e) {
     // Get the final selection dimensions
     const rect = selection.getBoundingClientRect();
 
-    // Clean up
-    cleanupAreaSelection();
+    // Store the selection area
+    const selectedArea = {
+        x: rect.left,
+        y: rect.top,
+        width: rect.width,
+        height: rect.height,
+        devicePixelRatio: window.devicePixelRatio || 1
+    };
 
-    // Send selected area to background script
+    // Check if selection is large enough
     if (rect.width > 10 && rect.height > 10) {
-        console.log("Sending selected area to background script:", {
-            x: rect.left,
-            y: rect.top,
-            width: rect.width,
-            height: rect.height,
-            devicePixelRatio: window.devicePixelRatio || 1
+        console.log("Sending selected area to background script:", selectedArea);
+
+        // First signal that we're about to capture
+        chrome.runtime.sendMessage({
+            action: 'prepareForCapture',
+            area: selectedArea
         });
 
-        chrome.runtime.sendMessage({
-            action: 'captureSelectedArea',
-            area: {
-                x: rect.left,
-                y: rect.top,
-                width: rect.width,
-                height: rect.height,
-                devicePixelRatio: window.devicePixelRatio || 1
-            }
-        });
+        // Clean up the overlay
+        cleanupAreaSelection();
+
+        // Wait a short time to ensure the overlay is fully removed
+        // before the actual screenshot is taken
+        setTimeout(() => {
+            chrome.runtime.sendMessage({
+                action: 'captureSelectedArea',
+                area: selectedArea
+            });
+        }, 100); // 100ms delay should be enough for the DOM to update
+    } else {
+        // If selection is too small, just clean up without capturing
+        cleanupAreaSelection();
     }
 }
 
