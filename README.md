@@ -1,27 +1,39 @@
 
+# AI Screenshot Organizer
+
 ## Project Overview
+A Chrome extension that captures screenshots, analyzes them with AI, and saves them with semantic names and organized folder structure.
 
-A Chrome extension that captures screenshots, analyzes them with AI, and saves them with semantic names and organized folder structure
-Built with React for the UI and will use a Python backend service to handle image processing with OpenAI's Vision API
+**It uses OpenAI's vision APIs. You Provide the OpenAI Key!**. Support for working with local LLMs, SLMs is coming soon.
+......................................................................................................................
 
-#### React based Chrome Extension Setup
+![tool](https://drive.google.com/uc?export=view&id=1QP_Thz0f0JFzN5leYtzx6lDmFG80XW-1)
 
-Used create-react-app with react-app-rewired to customize the build process
-Modified build process to create separate entry points for popup and options pages
-Post-build script to create the proper Chrome extension file structure
+## What this tool do ? 
+
+### Before:
+![After Screenshot](https://drive.google.com/uc?export=view&id=1BF6ElQKyP5315w2r-pk2A47r51fSTBhG)
+
+### After:
+![Before Screenshot](https://drive.google.com/uc?export=view&id=1YuxUS-weJlBWKQpEqD8-FeXJmaWYS7zB)
+
+## Technical Implementation
+
+### React-based Chrome Extension Setup
+- Used create-react-app with react-app-rewired to customize the build process
+- Modified build process to create separate entry points for popup and options pages
+- Post-build script to create the proper Chrome extension file structure
 
 ### Key Features
 
 #### Screenshot Capture
-
-Capture visible area of the current tab
-Area selection with a visual overlay (similar to macOS/Ubuntu)
+- Capture visible area of the current tab
+- Area selection with a visual overlay (similar to macOS/Ubuntu)
 
 #### Settings Management
-
-provide OpenAI API key 
-Local server URL configuration
-Folder structure template customization
+- Provide OpenAI API key 
+- Local server URL configuration
+- Folder structure template customization
 
 ## Project Structure
 ```
